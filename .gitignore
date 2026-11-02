@@ -1,1 +1,31 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+token.json
+
+# macOS
+.DS_Store
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Logs
+*.log

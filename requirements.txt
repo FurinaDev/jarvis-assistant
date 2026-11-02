@@ -1,5 +1,10 @@
-customtkinter
-sounddevice
-requests
 google-genai
-pillow
+numpy
+Pillow
+psutil
+requests
+sounddevice
+pywebview
+pyobjc-core
+pyobjc-framework-Cocoa
+pyobjc-framework-Quartz
