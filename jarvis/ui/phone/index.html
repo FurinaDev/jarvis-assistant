@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="icon" href="/icon.png">
+<title>JARVIS</title>
+<link rel="stylesheet" href="/phone.css">
+</head>
+<!-- Telefon: bu Mac'teki JARVIS'in uzaktan kulaklığı ve kumandası (jarvis/phone.py). -->
+<body data-state="connecting">
+
+<header>
+  <b id="name">JARVIS</b>
+  <span id="link" data-kind="wait"><i></i><em id="link-text">BAĞLANIYOR</em></span>
+</header>
+
+<main>
+  <button id="orb" aria-label="Mikrofonu aç ya da kapat">
+    <i class="halo"></i><i class="r r3"></i><i class="r r2"></i><i class="r r1"></i><i class="core"></i>
+  </button>
+  <div id="state">BAĞLANIYOR</div>
+  <div id="subs" aria-live="polite"></div>
+</main>
+
+<footer>
+  <form id="form" autocomplete="off">
+    <input id="text" placeholder="YAZ…" enterkeyhint="send" spellcheck="false">
+    <button id="send" aria-label="Gönder">›</button>
+  </form>
+  <button id="mic" aria-label="Mikrofon" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    <span id="mic-text">MİKROFON KAPALI</span>
+  </button>
+</footer>
+
+<!-- ilk dokunuş: tarayıcılar sesi ancak dokunuşla açar; kod yoksa buradan girilir -->
+<div id="gate" class="on">
+  <div class="box">
+    <b class="gname" id="gate-name">JARVIS</b>
+    <p id="gate-text">Mac'teki JARVIS'e bağlan. Sesi açmak için dokun.</p>
+    <div id="code-row" hidden>
+      <input id="code" placeholder="Erişim kodu ya da adres" autocomplete="off" spellcheck="false" autocapitalize="off">
+      <small>QR kodu okutamıyorsan Mac'teki JARVIS'te Ayarlar › Telefon › KOPYALA ile aldığın adresi buraya yapıştır.</small>
+    </div>
+    <button id="go">BAŞLAT</button>
+  </div>
+</div>
+
+<script src="/phone.js"></script>
+</body>
+</html>

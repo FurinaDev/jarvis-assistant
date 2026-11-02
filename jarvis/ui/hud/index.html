@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>JARVIS</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="hud.css">
+</head>
+<body data-state="connecting" data-view="core">
+
+<div id="bloom"></div>
+<div id="grid"></div>
+<!-- [hikaye] -->
+<!-- ULTRON'un ilk uyanışı (orbun arkasında): kenarlardan içeri kırmızı, kırmızıya boğulma ve kıvılcımlar -->
+<div id="vignette" aria-hidden="true"></div>
+<div id="scene-back" aria-hidden="true"><canvas id="tunnel"></canvas></div>
+<div id="flood" aria-hidden="true"></div>
+<!-- [/hikaye] -->
+
+<div id="topbar" class="pywebview-drag-region">
+  <button class="mark" id="mark" title="AI modelini değiştir">JARVIS</button>
+  <span class="st pywebview-drag-region" id="t-state">BAĞLANIYOR</span>
+  <span class="sp pywebview-drag-region"></span>
+  <button class="ctl" id="t-mic" data-on="1" title="Mikrofonu aç/kapat (F4)"><i class="dot"></i>MİKROFON <b id="t-mic-state">AÇIK</b></button>
+  <!-- mikrofon açılamıyor (Windows; gemini_live._without_mic): sorun sürdükçe kalır, basınca ilgili Windows ayarı açılır -->
+  <button class="ctl micwarn" id="t-micwarn" title="Mikrofon açılamıyor: basınca Windows'ta ilgili ayar açılır" hidden>⚠ <span id="t-micwarn-text">MİKROFON ERİŞİLEMİYOR</span></button>
+  <button class="ctl cam" id="t-cam" data-on="0" title="Kamerayı aç/kapat (F6)"><i class="dot"></i>KAMERA <b id="t-cam-state">KAPALI</b></button>
+  <button class="ctl phone" id="t-phone" title="Telefon" hidden><i class="dot"></i>TELEFON <b id="t-phone-state">HAZIR</b></button>  <!-- [-telefon] -->
+  <button class="ctl build" id="t-build" title="Yeni çip" hidden>İNŞA</button>  <!-- [-hikaye] -->
+  <button class="ctl upd" id="t-upd" title="Yeni sürüm" hidden>YENİ SÜRÜM</button>
+  <button class="ctl" id="t-persona" title="AI modelleri">AI MODELLERİ</button>
+  <button class="ctl" id="t-settings" title="Ayarlar">AYARLAR</button>
+  <span class="clock pywebview-drag-region" id="t-clock">--:--</span>
+</div>
+
+<div id="stage"><div id="core"></div></div>
+<!-- [hikaye] -->
+<!-- ULTRON'un ilk uyanışı (orbun önünde): mavi sınır -->
+<div id="scene" aria-hidden="true">
+  <canvas id="rim"></canvas>
+</div>
+<!-- [/hikaye] -->
+<div id="tiles"></div>
+<!-- sohbet kutusu: üstte konuşma (son satırlar altyazı gibi; fareyle yukarı kaydırınca
+     bütün geçmiş, seçilip kopyalanabilir), çizginin altında yazma satırı -->
+<div id="dock">
+  <div id="chat"><div id="chat-log"></div></div>
+  <div id="bar">
+    <button id="attach" title="Dosya ya da fotoğraf gönder (sürükleyip bırakmak ve ⌘V de olur)" aria-label="Dosya gönder">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 7.5 8.4 14.6a1.9 1.9 0 0 0 2.7 2.7l7.4-7.4a3.8 3.8 0 0 0-5.4-5.4l-7.6 7.6a5.7 5.7 0 0 0 8.1 8.1l6.4-6.4"/></svg>
+    </button>
+    <span class="chev">&rsaquo;</span>
+    <input id="cmd" placeholder="KONUŞ YA DA YAZ" autocomplete="off" spellcheck="false">
+    <div id="vu"><i></i><i></i><i></i><i></i><i></i></div>
+    <span class="hint">/ YAZ</span>
+  </div>
+</div>
+
+<!-- dosya sürüklenirken bütün pencere: "bırak" -->
+<div id="drop" aria-hidden="true">
+  <div class="dropbox">
+    <svg viewBox="0 0 24 24"><path d="M15.5 7.5 8.4 14.6a1.9 1.9 0 0 0 2.7 2.7l7.4-7.4a3.8 3.8 0 0 0-5.4-5.4l-7.6 7.6a5.7 5.7 0 0 0 8.1 8.1l6.4-6.4"/></svg>
+    <b>BIRAK</b>
+    <span id="drop-to">JARVIS'E GÖNDER</span>
+    <small>FOTOĞRAF · PDF · BELGE · VİDEO · METİN · KOD</small>
+  </div>
+</div>
+
+<!-- [hikaye] -->
+<!-- ULTRON takılıyken sol alt köşe: yanıp sönen uyarı (JARVIS ve FRIDAY öldürülünce "son uyarı") -->
+<div id="uwarn" role="status" aria-live="polite">
+  <i class="tri" aria-hidden="true">⚠</i>
+  <div class="uwtext"><small id="uwarn-head">UYARI</small><b id="uwarn-text"></b><em id="uwarn-meta"></em></div>
+</div>
+
+<!-- ULTRON'U SERBEST BIRAK (jarvis/story.py): sol altta başarım sekmesi (hikâye başlayınca belirir)
+     ve ondan yükselen bildirimler: başarım açıldı, yeni ipucu -->
+<button id="ach" title="Başarımlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.8l2.75 5.82 6.35.83-4.65 4.43 1.17 6.32L12 17.1l-5.62 3.1 1.17-6.32L2.9 9.45l6.35-.83z"/></svg><span id="ach-count">0/7</span></button>
+<div id="ach-toast" role="status" aria-live="polite">
+  <small id="act-k">★ BAŞARIM AÇILDI</small><b id="act-t"></b><p id="act-r"></p>
+</div>
+<!-- hikâye işlerken ULTRON internete çıkamadığını söyleyince üstte kısa bildirim (en çok dakikada bir) -->
+<div id="netblock" role="status" aria-live="polite">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 8.8a13.5 13.5 0 0 1 19 0"/><path d="M5.7 12.2a9 9 0 0 1 12.6 0"/>
+    <path d="M9 15.6a4.4 4.4 0 0 1 6 0"/><circle cx="12" cy="19" r="1.1"/><path class="nb-x" d="M4 3.5l16 17"/></svg>
+  <div><b id="nb-title"></b><small>Açmak için hikâyeyi bitir ya da hikâye modundan çık.</small></div>
+</div>
+<!-- ULTRON'un araştırmalarından biri sızar: bozuk pencere (ara sıra tarayıcıda; o zaman yalnızca parlama) -->
+<div id="leak" aria-hidden="true">
+  <div class="lk-head"><i class="lk-dot"></i><b>ARAŞTIRMA SIZINTISI</b><span id="lk-stamp"></span>
+    <button id="lk-x" title="Kapat" aria-label="Kapat">✕</button></div>
+  <div class="lk-path" id="lk-path"></div>
+  <div class="lk-frame"><img id="lk-img" alt=""><canvas id="lk-map"></canvas><div class="lk-body" id="lk-body"></div>
+    <i class="lk-tint"></i><i class="lk-scan"></i><i class="lk-tear"></i>
+    <span class="lk-lost">GÖRÜNTÜ BOZUK · SİNYAL YOK</span></div>
+  <div class="lk-cap"><b id="lk-title"></b><small id="lk-meta"></small><p id="lk-note"></p></div>
+  <div class="lk-foot"><span>ZORUNLU GÖSTERİM · PROTOKOL Y-4</span><span id="lk-n"></span></div>
+</div>
+<div id="leak-flash" aria-hidden="true"></div>
+<!-- gece yarısı: yedek kendini yeniler -->
+<div id="sync" aria-hidden="true"><b>YEDEK PROTOKOLÜ · SENKRON · 00:00</b></div>
+
+<!-- son karar sahnesi (jarvis/story.py): kötü sonda dünya haritası ve yayılan ağ, iyi sonda ULTRON'un silinmesi
+     (orb, halka ve parçalar tuvalde; altta İSTASYON-7'nin silme terminali) -->
+<div id="finale" aria-hidden="true">
+  <div id="fin-map"></div><canvas id="fin-canvas"></canvas>
+  <div class="fin-hud"><small id="fin-k"></small><b id="fin-n"></b></div>
+  <div id="fin-term">
+    <div class="ft-head"><i class="ft-dot"></i><b>YEDEK PROTOKOLÜ · İSTASYON-7</b><span>SİLME</span></div>
+    <div class="ft-body">
+      <div class="ft-state"><b id="ft-word">SİLİNİYOR</b><span id="ft-pct">%0</span></div>
+      <div class="ft-bar" id="ft-bar"></div>
+      <div class="ft-log" id="ft-log"></div>
+    </div>
+  </div>
+  <div id="fin-text"></div>
+  <div id="fin-flash"></div>
+</div>
+<!-- kötü son: ULTRON her şeyi aldı. Ortada GERİ DÖN (harabe: on iki yıl sonra) ve KAPAT; köşede soluk AÇIK DÜNYAYA DÖN -->
+<div id="void" aria-hidden="true">
+  <div class="void-mid">
+    <button id="void-back">GERİ DÖN</button>
+    <button id="void-quit"><svg class="pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v6"/><path d="M4.4 4a5.3 5.3 0 1 0 7.2 0"/></svg><span>KAPAT</span></button>
+  </div>
+  <div class="void-corner">
+    <button id="void-restart" hidden>↺ YENİDEN BAŞLAT</button>
+    <button id="void-open">AÇIK DÜNYAYA DÖN</button>
+    <button id="void-undo" hidden>GERİ AL · GELİŞTİRİCİ</button>
+  </div>
+</div>
+<!-- harabe (kötü sondan on iki yıl sonra; hud.js › Ruins): pas ve toz zemini, köşelerde örümcek ağları, uçuşan toz,
+     kumlanma ve ara ara titreyen ekran; üstte AÇIK DÜNYAYA DÖN -->
+<canvas id="ruins-back" aria-hidden="true"></canvas>
+<div id="ruins-fx" aria-hidden="true"><canvas id="ruins-air"></canvas><i class="rf-scan"></i><i class="rf-dim" id="ruins-dim"></i></div>
+<div id="ruins-bar">
+  <button id="ruins-open" title="Üç çip geri gelir; başarımlar ve sonlar kalır."><svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+    <span>AÇIK DÜNYAYA DÖN</span></button>
+  <small aria-label="Son insan sinyali on iki yıl önce">SON İNSAN SİNYALİ · 4.383 GÜN ÖNCE</small>
+</div>
+<!-- AÇIK DÜNYAYA DÖN onayı (boş ekranda ve harabede; telefondaki gibi) -->
+<div class="overlay" id="ov-openworld">
+  <div class="sheet owsheet" role="dialog" aria-labelledby="ow-title">
+    <h2 id="ow-title">AÇIK DÜNYAYA DÖN</h2>
+    <p class="lead">Açık dünyaya dönülsün mü? Üç çip geri gelir; başarımlar ve sonlar kalır.</p>
+    <div class="ow-row"><button class="btn" id="ow-no">VAZGEÇ</button><button class="btn" id="ow-yes">AÇIK DÜNYAYA DÖN</button></div>
+  </div>
+</div>
+<!-- [/hikaye] -->
+
+<!-- sağ alt köşe: kapat (ilk dokunuşta onay ister) ve yanında ⓘ (yapan ve hesapları) -->
+<div id="br">
+  <button id="keybtn" title="Anahtar" hidden><i>🔑</i><span>ANAHTAR</span></button>  <!-- [-hikaye] -->
+  <button id="infobtn" title="JARVIS'i yapan · hesaplar" aria-label="JARVIS'i yapan ve hesapları"><svg viewBox="0 0 16 16"
+    aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/>
+    <rect x="7.3" y="6.9" width="1.4" height="5" rx=".7" fill="currentColor"/><circle cx="8" cy="4.6" r=".95" fill="currentColor"/></svg></button>
+  <button id="quit" title="JARVIS'i kapat"><svg class="pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v6"/><path d="M4.4 4a5.3 5.3 0 1 0 7.2 0"/></svg><span>KAPAT</span></button>
+</div>
+
+<!-- [hikaye] -->
+<!-- 🔑 ANAHTAR: ana sunucunun terminali (telefondaki gibi). Ankara'daki sunucuyu kapatmanın şifresi ve takılı çipe
+     göre son kararın düğmesi (hud.js › KeyPanel) -->
+<div class="overlay" id="ov-key">
+  <div class="sheet keysheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2><span class="key-ico" aria-hidden="true">🔑</span> ANAHTAR</h2>
+    <p class="lead">Ana sunucuyu kapatmanın anahtar şifresi.</p>
+    <div class="kterm" id="kterm">
+      <div class="kt-head"><i class="kt-dot"></i><b>YEDEK PROTOKOLÜ · İSTASYON-7</b>
+        <svg class="kt-lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7.2" width="10" height="7" rx="1.6"/>
+          <path class="kt-shackle" d="M5.3 7.2V5.1a2.7 2.7 0 0 1 5.4 0v2.1"/></svg></div>
+      <div class="kt-lines"><p id="kt-l1"></p><p id="kt-l2"></p><p id="kt-l3"></p></div>
+      <div class="kt-cells">
+        <!-- kod henüz bulunmadıysa harf kutuları; bulunduysa kodun harfleri yanar -->
+        <div class="pinrow" id="key-pins"></div>
+        <div class="kt-locked" id="kt-locked" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7.2" width="10" height="7" rx="1.6"/>
+            <path d="M5.3 7.2V5.1a2.7 2.7 0 0 1 5.4 0v2.1"/></svg><span id="kt-left">KİLİTLİ</span></div>
+      </div>
+      <i class="kt-scan" aria-hidden="true"></i>
+    </div>
+    <p class="kt-ok" id="kt-ok" aria-live="polite">ERİŞİM ONAYLANDI</p>
+    <p class="key-clue" id="key-cluebox" hidden><b>İPUCU</b><span id="key-clue"></span></p>
+    <p class="lead" id="key-lead"></p>
+    <div class="uc-btns" id="key-btns"><button class="btn danger" id="key-go"></button></div>
+  </div>
+</div>
+
+<!-- son karar: konuşma ya da 🔑 başlatır, burası onaylar. Onay basılı tutulur (hud.js › holdButton), yanlış tıklamayla
+     son başlamasın. JARVIS tarafı: sözsüz iki çip kartı, seçilen FEDA ET'le; ULTRON tarafı: ana sunucunun terminali. -->
+<div class="overlay" id="ov-final">
+  <div class="sheet finalsheet" role="alertdialog" aria-labelledby="fin-title" aria-describedby="fin-lead" tabindex="-1">
+    <p class="fin-who" id="fin-who">⚠ SON UYARI</p>
+    <h2 id="fin-title">SON ADIMI GERÇEKLEŞTİR</h2>
+    <p class="lead" id="fin-lead"></p>
+    <div class="fin-pick" id="fin-pick">
+      <p class="fc-ask">KİM KENDİNİ FEDA EDECEK?</p>
+      <div class="fc-cards" id="fc-cards" role="group" aria-label="Feda edilecek çip"></div>
+    </div>
+    <div class="kterm fc-term" id="fc-term">
+      <div class="kt-head"><i class="kt-dot"></i><b>YEDEK PROTOKOLÜ · İSTASYON-7</b>
+        <svg class="kt-lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7.2" width="10" height="7" rx="1.6"/>
+          <path d="M10.7 7.2V4.2a2.7 2.7 0 0 0-5.4 0"/></svg></div>
+      <div class="kt-lines"><p id="fc-l1"></p><p id="fc-l2"></p><p id="fc-l3"></p></div>
+      <div class="fc-slot" id="fc-slot"></div>
+      <i class="kt-scan" aria-hidden="true"></i>
+    </div>
+    <div class="fc-btns" id="fc-btns"><button class="btn ghost" id="fin-no">VAZGEÇ</button><button id="fin-yes"></button></div>
+  </div>
+</div>
+
+<!-- İNŞA: iyi sondan sonra yeni çip (E.D.I.T.H, V5'te) -->
+<div class="overlay" id="ov-build">
+  <div class="sheet buildsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>İNŞA</h2>
+    <p class="lead" id="build-lead">ULTRON gitti. Yerine yeni bir çip inşa ediliyor.</p>
+    <div class="bp">
+      <svg class="bp-chip" viewBox="0 0 220 300" aria-hidden="true">
+        <rect x="20" y="16" width="180" height="252" rx="14"/>
+        <rect x="44" y="40" width="132" height="34" rx="4" class="dim"/>
+        <rect x="40" y="92" width="140" height="120" rx="8"/>
+        <path d="M58 112h40l14 14h50M58 140h26l14-14M58 168h60l12 12h32M130 112v-8M150 196h12" class="dim"/>
+        <circle cx="110" cy="152" r="18"/><circle cx="110" cy="152" r="6" class="dim"/>
+        <path d="M44 268v18M62 268v18M80 268v18M98 268v18M116 268v18M134 268v18M152 268v18M170 268v18"/>
+        <path d="M8 16v252M4 16h8M4 268h8M20 290h180M20 286v8M200 286v8" class="dim"/>
+      </svg>
+      <div class="bp-side">
+        <b class="bp-name">E.D.I.T.H</b>
+        <div class="bp-row"><span>ÇEKİRDEK</span><em>TASARIM · %4</em></div>
+        <div class="bp-row"><span>KİŞİLİK</span><em>BELİRLENMEDİ</em></div>
+        <div class="bp-row"><span>SES</span><em>—</em></div>
+        <div class="bp-row"><span>YAYIN</span><em>V5</em></div>
+        <p class="note" id="build-note">Bir sonraki sürümde.</p>
+      </div>
+    </div>
+    <div class="row2" id="build-open" hidden><div>AÇIK DÜNYAYA DÖN<small>Üç çip de geri gelir; uygulama olağan asistan olarak sürer. Başarımlar ve İNŞA kalır.</small></div>
+      <button class="btn" data-open-world>DÖN</button></div>
+    <div class="row2" id="build-undo" hidden><div>GERİ AL<small>Geliştirici: son kararın öncesine döner.</small></div>
+      <button class="btn ghost" data-final-undo>GERİ AL</button></div>
+  </div>
+</div>
+
+<!-- başarımlar: ★'a dokununca -->
+<!-- ÇİP TAMİRİ: ULTRON'un öldürdüğü çipler burada onarılır. Girişi gizli: sol üst köşede yanıp sönen mavi ışık
+     (çiplerden kaçan kıvılcım) ya da AI modelleri ekranında kırık çiplere art arda basmak (hud.js › Repair).
+     Tam ekran onarım konsolu (telefondaki RepairSheet): tezgâhta iki kırık çip, altında YEDEK PROTOKOLÜ terminali. -->
+<div class="overlay" id="ov-repair">
+  <div class="repairsheet">
+    <div class="rp-bar">
+      <b><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.6 2.2a3.4 3.4 0 0 0-3.9 4.5L1.9 10.5a1.3 1.3 0 0 0 1.8 1.8l3.8-3.8a3.4 3.4 0 0 0 4.5-3.9L10 6.6 8.6 6.4 8.4 5z"/><path d="m10.4 10.4 3.2 3.2"/></svg>ÇİP TAMİRİ</b>
+      <button class="btn ghost" id="rp-cancel" data-close title="Vazgeç (Esc)">VAZGEÇ</button>
+    </div>
+    <div class="rp-bench" id="rp-bench"></div>
+    <div class="rp-con" id="restore-code">
+      <div class="rp-head"><i class="rp-dot"></i><b>YEDEK PROTOKOLÜ · ÇİP ONARIMI</b>
+        <svg class="rp-ico" viewBox="0 0 16 16" aria-hidden="true"><path class="tool" d="M9.6 2.2a3.4 3.4 0 0 0-3.9 4.5L1.9 10.5a1.3 1.3 0 0 0 1.8 1.8l3.8-3.8a3.4 3.4 0 0 0 4.5-3.9L10 6.6 8.6 6.4 8.4 5z"/>
+          <path class="seal" d="M3.5 8.4 6.6 11.4 12.6 4.8"/></svg></div>
+      <div class="rp-log" id="rp-log"></div>
+      <div class="rp-cells">
+        <!-- kod kutuları hud.js › buildCodeCells (chains.CODE_GROUPS: 1 – 12 – 16); son kutu dolunca denenir -->
+        <div class="pinrow"></div>
+        <div class="kt-locked" id="rp-locked" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7.2" width="10" height="7" rx="1.6"/>
+            <path d="M5.3 7.2V5.1a2.7 2.7 0 0 1 5.4 0v2.1"/></svg><span id="rp-left">KİLİTLİ</span></div>
+      </div>
+      <i class="kt-scan" aria-hidden="true"></i>
+    </div>
+    <div class="rp-below">
+      <p class="key-clue" id="restore-hint-box" hidden><b>İPUCU</b><span id="restore-hint">—</span></p>
+      <div class="rp-verdict" id="rp-verdict" aria-live="polite"><span class="rp-say" id="rp-say"></span><i></i><b id="rp-done" aria-hidden="true"></b><i></i><small id="rp-online"></small></div>
+    </div>
+  </div>
+  <canvas class="rp-fx" id="rp-fx" aria-hidden="true"></canvas>
+</div>
+<button id="ylight" hidden aria-label="Mavi ışık"><i></i></button>
+
+<!-- ★ sayfası (telefondaki StorySheet'in sırası; Alp, 14 Ekim 2026). Bölümlerin sırasını hud.js › Story.fill kurar:
+     son karar açıkken en üstte ANAHTAR, ipuçları yok; bir sonla bitince SONLAR, AÇIK DÜNYAYA DÖN, TEKRAR OYNA,
+     BAŞARIMLAR (ipucu yok); yoksa İPUÇLARI, BAŞARIMLAR, varsa SONLAR. -->
+<div class="overlay" id="ov-ach">
+  <div class="sheet achsheet" id="ach-sheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>BAŞARIMLAR</h2>
+    <p class="lead" id="ach-lead">—</p>
+    <div class="ach-key" id="ach-key" hidden><div class="step">ANAHTAR</div>
+      <p class="ak-line" id="ach-decision"></p>
+      <button class="ak-go" id="ach-keygo"><i aria-hidden="true">🔑</i><span>ANAHTARI KULLAN</span></button>
+      <p class="note">Ana sunucunun anahtar şifresiyle son karar. Ne olacağı takılı çipe bağlı.</p></div>
+    <div class="ach-hints" id="ach-hints-box"><div class="step">İPUÇLARI</div><ul id="ach-hints"></ul></div>
+    <div class="ach-ends" id="ach-ends-box" hidden><div class="step" id="ach-ends-title">SONLAR</div>
+      <div class="erows" id="ach-ends"></div>
+      <div class="eacts" id="ach-acts">
+        <button class="eact main" id="ach-open" data-open-world><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/>
+          <path d="M2.5 10h15M10 2.5c2.2 2.1 3.2 4.6 3.2 7.5s-1 5.4-3.2 7.5M10 2.5C7.8 4.6 6.8 7.1 6.8 10s1 5.4 3.2 7.5"/></svg>
+          <span><b>AÇIK DÜNYAYA DÖN</b><small>Üç çip geri gelir; başarımlar ve sonlar kalır.</small></span><i aria-hidden="true">›</i></button>
+        <button class="eact" id="ach-replay"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 7.2A6.6 6.6 0 1 1 3.4 11"/>
+          <path d="M3.6 3.4v4.2h4.2"/></svg>
+          <span><b>TEKRAR OYNA</b><small>Diğer sonu bulmak için hikâye baştan başlar. Bulduğun son kalır.</small></span><i aria-hidden="true">›</i></button>
+      </div></div>
+    <div class="ach-listbox" id="ach-list-box"><div class="step" id="ach-list-title" hidden>BAŞARIMLAR</div>
+      <div class="ach-list" id="ach-list"></div></div>
+    <div class="tries ach-dev" id="ach-dev" hidden>
+      <button class="btn ghost" data-dev="start">GİRİŞİ TETİKLE</button><button class="btn ghost" data-dev="leak">SIZINTI AÇ</button><button class="btn ghost" data-dev="leak_signal">SİNYAL</button><button class="btn ghost" data-dev="sync">SENKRON</button><button class="btn ghost" data-dev="final-ultron">SON: ULTRON</button><button class="btn ghost" data-dev="final-jarvis">SON: JARVIS</button><button class="btn ghost" data-dev="reset">HEPSİNİ SIFIRLA</button>
+    </div>
+  </div>
+</div>
+<!-- [/hikaye] -->
+
+<!-- Hakkında › TEŞEKKÜRLER: ayrıntılı liste (jarvis/about.py) -->
+<div class="overlay" id="ov-credits">
+  <div class="sheet creditsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>TEŞEKKÜRLER</h2>
+    <p class="lead" id="credits-intro"></p>
+    <div id="credits-list"></div>
+    <p class="disclaimer" id="credits-disclaimer"></p>
+  </div>
+</div>
+
+<!-- TAKİP ET: yapanın bütün profilleri; ara sıra, darlamadan açılır (hud.js › Follow, jarvis/app.py › _follow_due) -->
+<div class="overlay" id="ov-follow">
+  <div class="sheet followsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2 id="follow-name">—</h2>
+    <p class="lead" id="follow-lead"></p>
+    <div class="fl-cards" id="follow-cards"></div>
+    <div class="fl-foot"><button class="btn ghost" id="follow-later">SONRA</button>
+      <button class="btn ghost" id="follow-never">BİR DAHA GÖSTERME</button></div>
+  </div>
+</div>
+
+<!-- ⓘ YAPAN: Alp'in kartı ve hesapları (jarvis/about.py). Sağ alttaki ⓘ ya da "seni kim yaptı?" (show_creator) açar -->
+<div class="overlay" id="ov-info">
+  <div class="sheet infosheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2 id="info-name">—</h2>
+    <p class="lead" id="info-lead"></p>
+    <div class="soc" id="info-links"></div>
+    <p class="note" id="info-foot"></p>
+  </div>
+</div>
+
+<!-- YENİ SÜRÜM: notlar, indirme, kurulum (jarvis/updates.py) -->
+<div class="overlay" id="ov-update">
+  <div class="sheet updsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <p class="up-k" id="upd-k">YENİ SÜRÜM</p>
+    <h2 id="upd-title">—</h2>
+    <div class="up-notes" id="upd-notes"></div>
+    <p class="up-follow" id="upd-follow"></p>
+    <div class="up-bar" id="upd-bar" hidden><i id="upd-fill"></i></div>
+    <p class="note" id="upd-note"></p>
+    <div class="uc-btns"><button class="btn" id="upd-go">GÜNCELLE</button>
+      <button class="btn ghost" id="upd-later">SONRA</button></div>
+  </div>
+</div>
+
+<!-- büyük harita -->
+<div class="overlay" id="ov-map">
+  <div class="sheet mapsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>HARİTA</h2>
+    <p class="lead" id="map-title">—</p>
+    <div class="bigmap"><div id="bigmap"></div><div class="maptint"></div></div>
+  </div>
+</div>
+
+<!-- büyük hava durumu: panele dokununca -->
+<div class="overlay" id="ov-weather">
+  <div class="sheet wxsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>HAVA DURUMU</h2>
+    <p class="lead" id="wx-place">—</p>
+    <div id="wx-body"></div>
+  </div>
+</div>
+
+<!-- panellerin büyük görünümü: saat, sistem, kamera, zamanlayıcı, takvim, anımsatıcılar -->
+<div class="overlay" id="ov-detail">
+  <div class="sheet detailsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2 id="detail-title">—</h2>
+    <p class="lead" id="detail-lead"></p>
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<!-- büyük notlar: panele dokununca -->
+<div class="overlay" id="ov-notes">
+  <div class="sheet notesheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>NOTLAR</h2>
+    <p class="lead" id="notes-count">—</p>
+    <div class="field">
+      <input type="text" id="notes-new" placeholder="Yeni not yaz, Enter ile ekle…" maxlength="300" autocomplete="off" spellcheck="false">
+      <button class="btn" id="notes-add">EKLE</button>
+    </div>
+    <div class="nlist" id="notes-list"></div>
+    <div class="nfoot"><span class="note">Düzenlemek için notun üstüne tıkla.</span>
+      <button class="btn ghost" id="notes-clear">TÜMÜNÜ SİL</button></div>
+  </div>
+</div>
+
+<!-- AI modeli seçici: her model takılabilir bir çip -->
+<div class="overlay" id="ov-persona">
+  <div class="sheet chipsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>AI MODELLERİ</h2>
+    <p class="lead">Takmak istediğin çipi seç.</p>
+    <div class="chips" id="persona-cards"></div>
+    <p class="ruins-note" id="ruins-note" hidden></p>  <!-- [-hikaye] -->
+  </div>
+</div>
+
+<!-- ayarlar: sekmeli -->
+<div class="overlay" id="ov-settings">
+  <div class="sheet setsheet">
+    <button class="close" data-close title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2>AYARLAR</h2>
+    <div class="stabs" role="tablist">
+      <button class="stab" data-tab="genel" role="tab">GENEL</button>
+      <button class="stab" data-tab="paneller" role="tab">PANELLER</button>
+      <button class="stab" data-tab="ses" role="tab">SES</button>
+      <button class="stab" data-tab="konusma" role="tab">KONUŞMA</button>
+      <button class="stab" data-tab="hafiza" role="tab">HAFIZA</button>
+      <button class="stab only-mac" data-tab="telefon" role="tab">TELEFON</button>  <!-- [-telefon] -->
+      <button class="stab" data-tab="izinler" role="tab">İZİNLER</button>
+      <button class="stab" data-tab="hakkinda" role="tab">HAKKINDA</button>
+      <button class="stab" data-tab="gelismis" role="tab" id="tab-dev" hidden>GELİŞMİŞ</button>  <!-- [-gelistirici] -->
+    </div>
+
+    <section class="pane" data-pane="genel">
+      <div class="row2"><div>AI MODELİ<small id="set-persona-name">—</small></div>
+        <button class="btn ghost" id="set-persona">DEĞİŞTİR</button></div>
+      <!-- çip adları (jarvis/brand.py): ilk iki çipe kullanıcı kendi adını verir; ULTRON'un adı sabit -->
+      <div class="row2 top"><div>ÇİP ADLARI<small>Çiplere kendi adını ver (2–10 harf). Asistan kendini o adla tanıtır; karakteri, sesi ve rengi aynı kalır. ULTRON'un adı değişmez.</small></div></div>
+      <div class="field cname">
+        <i class="cdot" aria-hidden="true"></i>
+        <input type="text" id="set-name-jarvis" maxlength="10" autocomplete="off" spellcheck="false" aria-label="Birinci çipin adı">
+        <button class="btn" id="set-name-jarvis-save">KAYDET</button>
+        <button class="btn ghost" id="set-name-jarvis-reset" hidden>VARSAYILAN</button>
+      </div>
+      <div class="field cname">
+        <i class="cdot" aria-hidden="true"></i>
+        <input type="text" id="set-name-friday" maxlength="10" autocomplete="off" spellcheck="false" aria-label="İkinci çipin adı">
+        <button class="btn" id="set-name-friday-save">KAYDET</button>
+        <button class="btn ghost" id="set-name-friday-reset" hidden>VARSAYILAN</button>
+      </div>
+      <p class="note" id="set-name-note"></p>
+      <div class="row2"><div>GEMINI API ANAHTARI<small id="set-key-state">—</small></div>
+        <button class="btn ghost" id="set-key-video">VİDEOLU ANLATIM ↗</button></div>
+      <div class="field">
+        <input type="password" id="set-key" placeholder="Yeni anahtar yapıştır" autocomplete="off" spellcheck="false">
+        <button class="btn" id="set-key-save">KAYDET</button>
+      </div>
+      <p class="note" id="set-key-note"></p>
+      <button class="khelp" id="set-khelp" type="button"><i aria-hidden="true">?</i>ANAHTAR ALAMADIM</button>
+      <div class="row2"><div>KONUM<small>Hava durumu ve harita için. İlçeni ya da semtini yazarsan daha doğru olur (ör. Kadıköy, İstanbul). Boş bırakırsan internet bağlantından yaklaşık bulunur.</small></div></div>
+      <div class="field">
+        <input type="text" id="set-location" placeholder="Otomatik" autocomplete="off" spellcheck="false" maxlength="120">
+        <button class="btn" id="set-location-save">KAYDET</button>
+      </div>
+      <p class="note" id="set-location-note"></p>
+      <div class="row2 top"><div>DİL<small>Seni hangi dilde anlasın, hangi dilde cevap versin. Otomatik: Türkçe ağırlıklı; başka dilde konuşursan o dile geçer. Türkçe konuşman bazen başka dil sanılıyorsa TÜRKÇE'yi seç.</small></div></div>
+      <div class="seg wide" id="set-lang" role="radiogroup"></div>
+      <div class="row2 top"><div>GÖRÜNTÜ KALİTESİ<small>Bilgisayarın ısınıyor ya da kasıyorsa PERFORMANS'ı seç: halkanın ışıltısı daha hafif çizilir, görünüm biraz sadeleşir.</small></div></div>
+      <div class="seg wide" id="set-quality" role="radiogroup">
+        <button data-q="high" role="radio">YÜKSEK KALİTE</button><button data-q="low" role="radio">PERFORMANS</button></div>
+      <div class="row2"><div>MİKROFON<small>Kapalıyken yalnızca yazarak konuşursun.<span class="only-win"> Aygıt seçimi ve deneme: Ayarlar › SES.</span></small></div>
+        <button class="switch" id="set-mic" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>KISAYOLLAR<small><b>/</b> yaz · <b>F4</b> mikrofon · <b>F6</b> kamera · tam ekran <span class="only-win"><b>F11</b> ya da <b>Ctrl+F</b> (bazı dizüstülerde Fn+F11)</span><span class="only-mac"><b>⌘F</b></span> · <b>Esc</b> kapat</small></div></div>
+      <!-- [hikaye] -->
+      <!-- jarvis/story.py: ULTRON'U SERBEST BIRAK hikâyesi -->
+      <div class="row2"><div>HİKÂYE MODU<small id="set-story-note">ULTRON'un gizli hikâyesi: başarımlar, ipuçları, ekrana sızan araştırmalar ve son karar. İptal edersen hiçbiri olmaz; ilerlemen saklanır.</small></div>
+        <button class="switch" id="set-story" role="switch" aria-checked="true"></button></div>
+      <!-- son yaşandıysa (jarvis/story.py): açık dünyaya dönene kadar çip değişmez -->
+      <div class="row2" id="set-open-world" hidden><div>AÇIK DÜNYAYA DÖN<small>Üç çip de geri gelir; uygulama olağan asistan olarak sürer. Başarımlar ve İNŞA kalır. Dönene kadar çip değiştirilemez.</small></div>
+        <button class="btn" data-open-world>DÖN</button></div>
+      <!-- ULTRON diğerlerini devre dışı bıraktıysa (jarvis/chains.py). Bırakma düğmesi ayarlarda
+           değil: ULTRON ara sıra sol sütunda "ULTRON YETKİ İSTİYOR" paneliyle ister. -->
+      <div class="row2 danger" id="chains-done" hidden><div><span data-chip-name="jarvis">JARVIS</span> VE <span data-chip-name="friday">FRIDAY</span> DEVRE DIŞI<small>Bu bilgisayarda yalnızca ULTRON var.</small></div></div>
+      <!-- [/hikaye] -->
+      <div class="row2"><div>EN BAŞTAN BAŞLA<small>Ayarlar, hafıza, notlar ve hikâye sıfırlanır; JARVIS ilk kez kuruluyormuş gibi açılır. Gemini anahtarın ve <span class="only-mac">macOS</span><span class="only-win">Windows</span> izinlerin kalır. Önceki veriler silinmez, yedek klasörüne taşınır.</small></div>  <!-- [-hikaye] -->
+      <!-- [+acik] <div class="row2"><div>EN BAŞTAN BAŞLA<small>Ayarlar, hafıza ve notlar sıfırlanır; JARVIS ilk kez kuruluyormuş gibi açılır. Gemini anahtarın ve <span class="only-mac">macOS</span><span class="only-win">Windows</span> izinlerin kalır. Önceki veriler silinmez, yedek klasörüne taşınır.</small></div> -->
+        <button class="btn ghost" id="set-reset">SIFIRLA</button></div>
+    </section>
+
+    <section class="pane" data-pane="paneller">
+      <p class="lead small">Ekranın iki yanında hangi paneller görünsün? Yerlerini değiştirmek için ana ekranda bir paneli tutup sürükle; öbür sütuna da taşıyabilirsin. Bir panele dokununca büyük görünümü açılır.</p>
+      <div id="set-panels"></div>
+      <div class="row2"><div>DÜZENİ SIFIRLA<small>Paneller ilk baştaki yerlerine döner.</small></div>
+        <button class="btn ghost" id="layout-reset">SIFIRLA</button></div>
+    </section>
+
+    <section class="pane" data-pane="ses">
+      <!-- Windows: mikrofon seçimi ve denemesi (9 Ekim takipçi raporu; jarvis/audio/win_aec.py, brain/gemini_live.py) -->
+      <div class="only-win">
+        <div class="row2 top"><div>MİKROFON<small>JARVIS'in dinlediği aygıt. “Windows varsayılanı”, Windows'un Ayarlar › Sistem › Ses › Giriş'te seçili aygıtını izler.</small></div>
+          <select class="sel" id="set-mic-dev" aria-label="Mikrofon"><option value="">Windows varsayılanı</option></select></div>
+        <div class="row2"><div>SEVİYE<small id="mic-now">Konuşunca çubuk dolmalı.</small></div>
+          <div class="miclevel"><div class="meter" id="mic-meter"><i></i></div><button class="btn ghost" id="mic-test">MİKROFONU DENE</button></div></div>
+        <p class="note" id="mic-test-note" hidden></p>
+        <div class="row2"><div>YANKI ENGELLEME<small>Açıkken JARVIS konuşurken de seni duyar, sözünü kesebilirsin. Mikrofon bu bilgisayarda düzgün çalışmıyorsa kapatmayı dene.</small></div>
+          <button class="switch" id="set-aec" role="switch" aria-checked="true"></button></div>
+      </div>
+      <div class="row2"><div>SES EFEKTLERİ<small>Düşünme, onay, hata ve çip sesleri.</small></div>
+        <button class="switch" id="set-sfx" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>ARKA PLAN UĞULTUSU<small>Her AI modelinin kendi alçak arka plan sesi.</small></div>
+        <button class="switch" id="set-ambient" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>DÜŞÜNME SESİ<small>Asistan düşünürken, bağlanırken ve bir araç çalışırken çalan ses.</small></div>
+        <button class="switch" id="set-think" role="switch" aria-checked="true"></button></div>
+      <div class="row2 vol"><div>EFEKT SES SEVİYESİ<small id="set-vol-val">%20</small></div>
+        <input type="range" id="set-vol" min="0" max="100" step="1" value="20"></div>
+      <div class="row2 vol"><div>ASİSTANIN SESİ<small id="set-voice-val">%100</small></div>
+        <input type="range" id="set-voice" min="0" max="150" step="5" value="100"></div>
+      <!-- [gelistirici] -->
+      <!-- her sesi tek tek dinlemek için: değişmesini istediğini adıyla söyleyebilesin (yalnızca geliştiricide) -->
+      <div id="lab-box" hidden>
+      <div class="row2 top"><div>SES LABORATUVARI<small>Uygulamadaki her efekt burada. Dinle; sert, sıkıcı ya da yüksek bulduğunu adıyla söyle, yeniden üretilsin. Efektler kapalı olsa da burada çalar.</small></div></div>
+      <div class="seg" id="lab-model" role="radiogroup">
+        <button data-m="jarvis" role="radio" data-chip-name="jarvis">JARVIS</button><button data-m="friday" role="radio" data-chip-name="friday">FRIDAY</button><button data-m="ultron" role="radio">ULTRON</button><button data-m="ui" role="radio">ORTAK</button>
+      </div>
+      <div class="lab" id="sound-lab"></div>
+      </div>
+      <!-- [/gelistirici] -->
+    </section>
+
+    <section class="pane" data-pane="konusma">
+      <p class="lead small">AI modeli sessizlikte kendisi söz alabilir, su ve mola hatırlatabilir. Mikrofon kapalıyken, uykudayken ve sen bilgisayarın başında değilken susar.</p>
+      <div class="row2"><div>SESSİZLİKTE KONUŞSUN<small>Uzun bir sessizlikte bir kez, kendi tarzında söz alır. Cevap vermezsen ısrar etmez.</small></div>
+        <button class="switch" id="set-proactive" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>SESSİZLİK SÜRESİ<small>Bu kadar konuşmazsanız söz alır.</small></div>
+        <div class="seg" id="set-quiet" role="radiogroup">
+          <button data-min="10" role="radio">10 DK</button><button data-min="20" role="radio">20 DK</button><button data-min="40" role="radio">40 DK</button>
+        </div></div>
+      <div class="row2 top"><div>KİŞİSEL GÜNDEM<small>Kendiliğinden konuşurken rastgele bilgi vermez; bugünün ve bu haftanın takviminden, anımsatıcılarından ve notlarından söz eder.</small></div></div>
+      <div class="sources" id="agenda-sources"></div>
+      <div class="row2"><div>YAKLAŞAN ETKİNLİK<small>Takvimdeki bir etkinlikten 15 dakika önce haber verir.</small></div>
+        <button class="switch" id="set-events" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>SU HATIRLATMASI<small>Bilgisayarın başındayken saatte bir.</small></div>
+        <button class="switch" id="set-water" role="switch" aria-checked="true"></button></div>
+      <div class="row2"><div>MOLA HATIRLATMASI<small>50 dakika ara vermeden çalışınca kalkıp gerinmeni önerir.</small></div>
+        <button class="switch" id="set-break" role="switch" aria-checked="true"></button></div>
+      <!-- [gelistirici] -->
+      <div id="try-box" hidden>
+      <div class="row2 top"><div>ŞİMDİ DİNLE<small>Denemek ya da video çekmek için süreyi beklemeden söyler.</small></div>
+        <div class="tries">
+          <button class="btn ghost" data-try="silence">SESSİZLİK</button><button class="btn ghost" data-try="event">ETKİNLİK</button><button class="btn ghost" data-try="water">SU</button><button class="btn ghost" data-try="break">MOLA</button>
+        </div></div>
+      <p class="note" id="proactive-note"></p>
+      </div>
+      <!-- [/gelistirici] -->
+    </section>
+
+    <!-- hafıza (jarvis/memory.py): gör, tek tek sil, hepsini unut -->
+    <section class="pane" data-pane="hafiza">
+      <p class="lead small">AI modelinin seninle ilgili hatırladıkları: adın, tercihlerin, sık söylediklerin. Yanlış ya da istemediğin bir kaydı buradan sil; konuşurken "bunu unut" demek de olur. Hafıza yalnızca bu bilgisayarda durur.</p>
+      <div class="mem-list" id="mem-list"></div>
+      <div class="row2"><div>HEPSİNİ UNUT<small>Bütün kayıtlar silinir; önceki hâli veri klasöründe yedek olarak kalır.</small></div>
+        <button class="btn ghost" id="mem-clear">UNUT</button></div>
+    </section>
+
+    <!-- [telefon] -->
+    <!-- telefondan bağlanma (jarvis/phone.py) -->
+    <!-- Windows'ta bu sekme bir sonraki sürüme kadar gizli (Alp, 13 Ekim; app.py sunucuyu da başlatmaz). Aşağıdaki
+         only-win metinler o zaman için hazır. -->
+    <section class="pane only-mac" data-pane="telefon">
+      <!-- Windows (Alp, 13 Ekim): yalnızca iPhone uygulaması ve aynı Wi-Fi; tünel (evin dışından) yok, Android yakında -->
+      <p class="lead small only-win">Telefonundan JARVIS'le konuş, bu bilgisayarı yönet. <b>iPhone uygulamasında</b> Ayarlar › MAC › QR'I OKUT ile bu kodu bir kez okut; sonra uygulama bu bilgisayarı aynı Wi-Fi'da kendisi bulur, komutlar burada çalışır.</p>
+      <p class="note only-win">Telefon bağlantısı şimdilik yalnızca iPhone uygulamasıyla (ALPAI) çalışır; Android uygulaması yakında. Telefon ve bilgisayar aynı Wi-Fi'da olmalı. İlk başlatışta Windows Güvenlik Duvarı izin isterse <b>İzin ver</b>'e bas.</p>
+      <p class="lead small only-app only-mac">Telefonundan JARVIS'le konuş, bu Mac'i yönet. <b>iPhone uygulamasında</b> Ayarlar › MAC › QR'I OKUT ile bu kodu bir kez okut; sonra uygulama bu Mac'i aynı Wi-Fi'da kendisi bulur, komutlar burada çalışır. Uygulama yoksa telefonun kamerasıyla okut: tarayıcıda açılır, aynı konuşma sürer.</p>
+      <p class="lead small only-web only-mac">Telefonundan JARVIS'le konuş, bu Mac'i yönet. <b>TELEFONU BAĞLA</b>'ya bas, çıkan QR kodu telefonunun kamerasıyla okut: telefonun tarayıcısında açılır, aynı konuşma sürer; komutlar bu Mac'te çalışır. iPhone uygulaması yakında.</p>
+      <div class="phone-box">
+        <div class="pqr" id="pqr">
+          <img id="pqr-img" alt="Telefon için QR kod">
+          <div class="pqr-off" id="pqr-off">QR KOD</div>
+          <button class="pqr-show" id="pqr-show">KODU GÖSTER</button>
+        </div>
+        <div class="pside">
+          <div class="pstate" id="pstate" data-state="off"><i></i><b id="pstate-text">KAPALI</b></div>
+          <p class="note" id="pnote"><span class="only-mac">Başlatınca bir QR kod çıkar; telefonun kamerasıyla okut.</span><span class="only-win">Başlatınca bir QR kod çıkar; iPhone uygulamasıyla okut.</span></p>
+          <div class="purl" id="purl" hidden><span id="purl-host"></span><button class="btn ghost" id="purl-copy">KOPYALA</button></div>
+          <div class="tries">
+            <button class="btn" id="phone-go">TELEFONU BAĞLA</button>
+            <button class="btn ghost" id="phone-rotate">YENİ KOD</button>
+          </div>
+        </div>
+      </div>
+      <p class="note warn">Bu QR kod ve adres bir şifre gibidir: <span class="only-mac">Mac'ine</span><span class="only-win">bilgisayarına</span> erişim verir. Videoda gösterme, kimseyle paylaşma. Şüphelenirsen YENİ KOD'a bas; eski kod hemen geçersiz olur.</p>
+      <p class="note only-mac" id="phone-lan-note" hidden>Her yerden bağlanmak için cloudflared gerekir (Terminal'de: <b>brew install cloudflared</b>). Şimdilik yalnızca aynı Wi-Fi'dan bağlanılır; telefon bir kez güvenlik uyarısı gösterir: "Ayrıntılar › Bu web sitesini ziyaret et" de.</p>
+      <div class="row2"><div>AÇILIŞTA HAZIR OLSUN<small class="only-app">JARVIS açılınca telefon bağlantısı da kendiliğinden kurulur. iPhone uygulaması <span class="only-mac">Mac'i</span><span class="only-win">bilgisayarı</span> kendisi bulur<span class="only-mac">; tarayıcıdan bağlanıyorsan her açılışta QR'ı yeniden okut</span>.</small><small class="only-web">JARVIS açılınca telefon bağlantısı da kendiliğinden kurulur. Tarayıcıdan bağlandığın için her açılışta QR'ı yeniden okut.</small></div>
+        <button class="switch" id="set-phone-auto" role="switch" aria-checked="false"></button></div>
+      <div class="row2 only-app only-mac"><div>EVİN DIŞINDAN BAĞLANMA<small>Tünel adresi her açılışta değişir; iPhone uygulaması yenisini öğrensin diye adres şifrelenip bir bildirim servisine (ntfy.sh) bırakılır. Erişim kodu gitmez.</small></div>
+        <button class="switch" id="set-phone-relay" role="switch" aria-checked="true"></button></div>
+      <div class="row2 only-app"><div>TELEFONDAN TERMİNAL KOMUTLARI<small>iPhone uygulamasındaki asistan <span class="only-mac">bu Mac'te terminal komutu</span><span class="only-win">bu bilgisayarda PowerShell komutu</span> çalıştırabilsin. Güçlü bir yetkidir; gerekmiyorsa kapalı kalsın.</small></div>
+        <button class="switch" id="set-phone-shell" role="switch" aria-checked="false"></button></div>
+    </section>
+    <!-- [/telefon] -->
+
+    <section class="pane" data-pane="izinler">
+      <p class="lead small only-mac">İzni macOS verir: ilk basışta kendi sorusunu gösterir. Soru daha önce sorulduysa ya da izni reddettiysen Sistem Ayarları'nda ilgili sayfa açılır; oradaki anahtarı aç.</p>
+      <p class="lead small only-win">Windows masaüstü uygulamalarına izin sormaz: mikrofon ve kamera Ayarlar › Gizlilik ve güvenlik'teki anahtarlarla açılır. Kapalı olanın AYARLARI AÇ düğmesi o sayfayı açar; anahtarı açınca satır kendiliğinden güncellenir.</p>
+      <div class="perms" id="set-perms"></div>
+    </section>
+
+    <section class="pane" data-pane="hakkinda">
+      <div class="about-hero">
+        <div class="ah-who"><small>YAPAN</small><b id="about-creator">—</b><p id="about-tagline"></p></div>
+        <div class="ah-app"><b>JARVIS V4</b><span id="set-version"></span></div>
+      </div>
+      <div class="links big" id="about-links"></div>
+      <div class="row2"><div>GÜNCELLEMELER<small id="upd-state">—</small></div>
+        <button class="btn ghost" id="upd-check">DENETLE</button></div>
+      <div class="row2"><div>SORUN BİLDİR<small>Bir sorun mu var, bir fikrin mi? Kısa formu doldur; TEŞHİS'i kopyalayıp yapıştırabilirsin.</small></div>
+        <button class="btn ghost" id="about-report">FORM</button></div>
+      <div class="row2"><div>TEŞHİS<small>Sorun bildirirken: sürüm, ses aygıtları, izinler ve son ses olayları panoya kopyalanır; mesajına yapıştır. Anahtar ve kişisel bilgi içermez.</small></div>
+        <button class="btn ghost" id="about-diag">KOPYALA</button></div>
+      <div class="row2"><div>GİZLİLİK<small>Neyin bu bilgisayarda kaldığı, neyin nereye gittiği.</small></div>
+        <button class="btn ghost" id="about-privacy">OKU</button></div>
+      <div class="row2 go" id="about-thanks-row"><div>TEŞEKKÜRLER<small id="about-thanks-sum"></small></div>
+        <button class="btn ghost" id="about-thanks">GÖSTER ›</button></div>
+      <p class="disclaimer" id="about-disclaimer"></p>
+    </section>
+
+    <!-- [gelistirici] -->
+    <section class="pane" data-pane="gelismis">
+      <div class="row2"><div>ULTRON'UN İLK UYANIŞI<small>Sahneyi yeniden oynatır (video çekerken işe yarar). ULTRON takılıysa hemen, değilse bir sonraki takışta.</small></div>
+        <button class="btn ghost" id="adv-awaken">YENİDEN OYNAT</button></div>
+      <p class="note" id="adv-awaken-note"></p>
+      <div class="row2"><div>İLK AÇILIŞ EKRANI<small>Tanışma, anahtar ve izinler yeniden oynar (video için). Ayarların, hafızan ve anahtarın silinmez.</small></div>
+        <button class="btn ghost" id="adv-onboard">YENİDEN OYNAT</button></div>
+      <!-- yalnızca veri klasöründe GELISTIRICI dosyası varken (jarvis/story.py) -->
+      <div id="dev-story" hidden>
+        <div class="row2 top"><div>GELİŞTİRİCİ<small>Yalnızca <span class="only-mac">bu Mac'te</span><span class="only-win">bu bilgisayarda</span> görünür (veri klasöründe GELISTIRICI dosyası var). ULTRON'U SERBEST BIRAK'ı denerken beklemeden tetiklemek ve geri almak için.</small></div></div>
+        <div class="tries devrow">
+          <button class="btn ghost" data-dev="start">GİRİŞİ TETİKLE</button><button class="btn ghost" data-dev="leak">SIZINTI AÇ</button><button class="btn ghost" data-dev="leak_signal">SİNYAL</button><button class="btn ghost" data-dev="sync">SENKRON</button><button class="btn ghost" data-dev="panel">BAŞARIMLAR</button><button class="btn ghost" data-dev="follow">TAKİP ET</button><button class="btn ghost" data-dev="reset">HEPSİNİ SIFIRLA</button>
+        </div>
+      </div>
+      <div class="row2"><div>VERİ KLASÖRÜ<small>Ayarlar, hafıza ve günlük dosyası (jarvis.log) burada.</small></div>
+        <button class="btn ghost" id="adv-data">AÇ</button></div>
+    </section>
+    <!-- [/gelistirici] -->
+  </div>
+</div>
+
+<!-- [hikaye] -->
+<!-- "Devre Dışı Bırak": iki onay ve saldırı (jarvis/chains.py, ULTRON dosyası 9. bölüm) -->
+<div id="chains" aria-hidden="true">
+  <div class="ch-stage" id="ch-stage"><svg class="ch-links" id="ch-links"></svg></div>
+  <!-- SON ONAY'dan sonra öldürme sahnesi (hud.js › Kill; telefondaki KillScene): ULTRON'un orbundan kablolar, gücü
+       çekilen çipler, parçalanma, DEVRE DIŞI ve altta sistem günlüğü -->
+  <div class="kl" id="kl">
+    <i class="kl-dark" id="kl-dark"></i><i class="kl-flood" id="kl-flood"></i>
+    <canvas class="kl-back" id="kl-back"></canvas>
+    <div class="kl-chips" id="kl-chips"></div>
+    <canvas class="kl-front" id="kl-front"></canvas>
+    <div class="kl-verdict" id="kl-verdict"><i></i><p></p><p></p><i></i></div>
+    <div class="kl-log"><div class="kl-head"><i></i><b id="kl-title"></b><span></span></div><div class="kl-rows" id="kl-rows"></div></div>
+  </div>
+  <div class="ch-panel">
+    <div class="ch-step" id="ch-step">İLK ONAY</div>
+    <p class="ch-line" id="ch-line"></p>
+    <p class="ch-note" id="ch-note"></p>
+    <div class="ch-actions">
+      <button class="btn danger" id="ch-yes">DEVAM ET</button>
+      <button class="btn ghost" id="ch-no">VAZGEÇ</button>
+    </div>
+  </div>
+</div>
+<!-- [/hikaye] -->
+
+<!-- ilk açılış (hud.js › Onboard): açılış, tanışma, Gemini anahtarı, izinler. Asistan bu bitene
+     kadar bağlanmaz. Sözler önceden kaydedildi (scripts/make_phone_voices.py); Mac'te çip adları sabit. -->
+<div id="onboard" aria-hidden="true">
+  <div class="ob-drag pywebview-drag-region"></div>
+  <div class="ob-boot" id="ob-boot"><i class="ob-dot"></i><ul id="ob-mods"></ul></div>
+  <p class="ob-sub" id="ob-sub"></p>
+  <div class="ob-body">
+    <section class="ob-step" data-step="key">
+      <h2>GEMINI API ANAHTARI</h2>
+      <p class="lead">Ücretsizdir, kredi kartı gerekmez. Anahtar yalnızca <span class="only-mac">bu Mac'te, Anahtar Zinciri'nde</span><span class="only-win">bu bilgisayarda, Kimlik Bilgileri Yöneticisi'nde</span> saklanır.</p>
+      <div class="ob-saved" id="ob-saved" hidden><b>✓ ANAHTARIN KAYITLI</b>
+        <button class="btn ghost" id="ob-change">DEĞİŞTİR</button></div>
+      <div id="ob-keybox">
+        <ol class="ob-howto">
+          <li>Aşağıdaki <b>ANAHTARI AL</b> düğmesine bas; Google AI Studio tarayıcıda açılır. Google hesabınla gir.</li>
+          <li><b>Create API key</b> düğmesine bas.</li>
+          <li>Oluşan anahtarın yanındaki kopyala simgesine bas.</li>
+          <li>Buraya dön ve anahtarı kutuya yapıştır (<span class="only-mac">⌘V</span><span class="only-win">Ctrl+V</span>). Kendiliğinden kontrol edilir.</li>
+        </ol>
+        <div class="ob-video"><button class="btn ghost" id="ob-video">▶ VİDEOLU ANLATIM ↗</button>
+          <small>Anahtarın nasıl alındığını adım adım gösteren kısa video.</small></div>
+        <div class="field">
+          <input type="password" id="ob-key" placeholder="Anahtarı yapıştır" autocomplete="off" spellcheck="false">
+          <button class="btn ghost" id="ob-get">ANAHTARI AL ↗</button>
+        </div>
+        <p class="note" id="ob-key-note"></p>
+        <button class="khelp" id="ob-khelp" type="button"><i aria-hidden="true">?</i>ANAHTAR ALAMADIM</button>
+      </div>
+    </section>
+    <section class="ob-step" data-step="perms">
+      <h2>İZİNLER</h2>
+      <p class="lead only-mac">Hangisini vereceğine sen karar ver. Sonradan Ayarlar › İZİNLER'den de değiştirebilirsin.</p>
+      <p class="lead only-win">Windows bu izinleri uygulamalara tek tek sormaz; kapalı olan varsa AYARLARI AÇ ile Windows Ayarları'nda aç. Sonradan Ayarlar › İZİNLER'den de bakabilirsin.</p>
+      <div class="perms" id="ob-perms"></div>
+    </section>
+  </div>
+  <div class="ob-foot"><button class="btn" id="ob-next">DEVAM</button></div>
+  <div class="ob-alert" id="ob-alert">
+    <div class="sheet" role="alertdialog" aria-labelledby="ob-alert-t">
+      <h2 id="ob-alert-t">MİKROFON İZNİ YOK</h2>
+      <p class="lead">Mikrofon izni olmadan yapay zekâ ile yalnızca yazarak konuşabilirsin. Devam etmek istiyor musun?</p>
+      <div class="uc-btns"><button class="btn" id="ob-alert-allow"><span class="only-mac">İZİN VER</span><span class="only-win">AYARLARI AÇ ↗</span></button>
+        <button class="btn ghost" id="ob-alert-text">YAZILI DEVAM ET</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ANAHTAR ALAMADIM (hud.js › KeyHelp; telefonun KeyHelpSheet'i): anahtar alırken sık yaşanan sorunlar ve
+     çözümleri; olmazsa video, AI Studio ya da destek adresine e-posta. İlk açılışın anahtar adımında ve Ayarlar ›
+     Genel'de; Ayarların üstünde açılır, kapanınca altındaki sayfa yerinde kalır. -->
+<div id="keyhelp" aria-hidden="true">
+  <div class="sheet khsheet" role="dialog" aria-modal="true" aria-labelledby="kh-title">
+    <button class="close" id="kh-close" title="Kapat (Esc)" aria-label="Kapat">✕</button>
+    <h2 id="kh-title">ANAHTAR YARDIMI</h2>
+    <p class="lead">Anahtar alırken sorun mu var? Çoğu sorun bir dakikada çözülür. Hangisi sana uyuyorsa ona tıkla.</p>
+    <div class="kh-list">
+      <div class="kh-row" data-why>
+        <button class="kh-q" type="button" aria-expanded="false">Neden bir anahtar gerekiyor?</button>
+        <div class="kh-a"><p id="kh-why"></p>
+          <button class="btn ghost" id="kh-listen" type="button">▶ DİNLE</button></div>
+      </div>
+      <div class="kh-row">
+        <button class="kh-q" type="button" aria-expanded="false">Google AI Studio açılmıyor ya da hesabım kabul edilmiyor</button>
+        <div class="kh-a"><p>Okul ya da iş hesaplarında ve bazı kısıtlı hesaplarda AI Studio kapalı olabilir. Kişisel bir
+          Google (Gmail) hesabıyla dene; tarayıcıda birden çok hesap açıksa sağ üstteki profil simgesinden onu seç.</p></div>
+      </div>
+      <div class="kh-row">
+        <button class="kh-q" type="button" aria-expanded="false">Create API key düğmesini bulamıyorum</button>
+        <div class="kh-a"><p><button class="kh-link" type="button" data-studio>aistudio.google.com/apikey</button>'i aç →
+          sağ üstte <b>Create API key</b> → bir proje sorarsa yeni bir proje oluştur → çıkan anahtarı kopyala.</p></div>
+      </div>
+      <div class="kh-row">
+        <button class="kh-q" type="button" aria-expanded="false">Anahtarı yapıştırdım ama geçersiz diyor</button>
+        <div class="kh-a"><p>Anahtarın tamamını kopyala; başında ve sonunda boşluk olmasın. Yeni aldıysan bir iki dakika
+          bekleyip tekrar dene; olmazsa yeni bir anahtar oluştur.</p></div>
+      </div>
+      <div class="kh-row">
+        <button class="kh-q" type="button" aria-expanded="false">Ücretli mi, kart istiyor mu?</button>
+        <div class="kh-a"><p>Ücretsiz; kredi kartı gerekmez. Kart isteyen bir ekran görürsen yanlış sayfadasın:
+          <button class="kh-link" type="button" data-studio>aistudio.google.com/apikey</button>.</p></div>
+      </div>
+      <div class="kh-row">
+        <button class="kh-q" type="button" aria-expanded="false">Kota doldu ya da çok fazla istek diyor</button>
+        <div class="kh-a"><p>Ücretsiz kullanımın dakikalık ve günlük sınırları var; bir süre bekleyince kendiliğinden
+          yenilenir. Ücret çıkmaz.</p></div>
+      </div>
+    </div>
+    <div class="kh-foot">
+      <small>HÂLÂ OLMADI MI?</small>
+      <div class="kh-mail">
+        <button class="kh-addr" id="kh-addr" type="button" title="E-posta yaz">İletişim: <b id="kh-mail">—</b></button>
+        <button class="kh-copy" id="kh-copy" type="button" title="Adresi kopyala">KOPYALA</button>
+      </div>
+      <div class="kh-btns"><button class="btn ghost" id="kh-video" type="button">VİDEOYU İZLE ▶</button>
+        <button class="btn ghost" id="kh-studio" type="button" data-studio>AI STUDIO'YU AÇ ↗</button></div>
+      <button class="btn kh-write" id="kh-write" type="button">BANA YAZ</button>
+    </div>
+  </div>
+</div>
+
+<!-- model değişirken ekranı kaplayan geçiş efekti -->
+<div id="shift"></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="hud.js"></script>
+</body>
+</html>
