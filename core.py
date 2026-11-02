@@ -1,0 +1,116 @@
+# Decompiled with PyLingual (https://pylingual.io)
+# Internal filename: 'keyring/core.py'
+# Bytecode version: 3.12.0rc2 (3531)
+# Source timestamp: 1970-01-01 00:00:00 UTC (0)
+
+"""\nCore API functions and initialization routines.\n"""
+from __future__ import annotations
+global _keyring_backend
+import configparser
+import logging
+import os
+import sys
+import typing
+from . import backend, credentials
+from .backends import fail
+from .util import platform_ as platform
+LimitCallable = typing.Callable[[backend.KeyringBackend], bool]
+log = logging.getLogger(__name__)
+_keyring_backend = None
+def set_keyring(keyring: backend.KeyringBackend) -> None:
+    """Set current keyring backend."""
+    global _keyring_backend
+    if not isinstance(keyring, backend.KeyringBackend):
+        raise TypeError('The keyring must be an instance of KeyringBackend')
+    else:
+        _keyring_backend = keyring
+def get_keyring() -> backend.KeyringBackend:
+    """Get current keyring backend."""
+    if _keyring_backend is None:
+        init_backend()
+    return typing.cast(backend.KeyringBackend, _keyring_backend)
+def disable() -> None:
+    """\n    Configure the null keyring as the default.\n\n    >>> fs = getfixture(\'fs\')\n    >>> disable()\n    >>> disable()\n    Traceback (most recent call last):\n    ...\n    RuntimeError: Refusing to overwrite...\n    """
+    root = platform.config_root()
+    try:
+        os.makedirs(root)
+    except OSError:
+        pass
+    filename = os.path.join(root, 'keyringrc.cfg')
+    if os.path.exists(filename):
+        msg = f'Refusing to overwrite {filename}'
+        raise RuntimeError(msg)
+    else:
+        with open(filename, 'w', encoding='utf-8') as file:
+            file.write('[backend]\ndefault-keyring=keyring.backends.null.Keyring')
+def get_password(service_name: str, username: str) -> str | None:
+    """Get password from the specified service."""
+    return get_keyring().get_password(service_name, username)
+def set_password(service_name: str, username: str, password: str) -> None:
+    """Set password for the user in the specified service."""
+    get_keyring().set_password(service_name, username, password)
+def delete_password(service_name: str, username: str) -> None:
+    """Delete the password for the user in the specified service."""
+    get_keyring().delete_password(service_name, username)
+def get_credential(service_name: str, username: str | None) -> credentials.Credential | None:
+    """Get a Credential for the specified service."""
+    return get_keyring().get_credential(service_name, username)
+def recommended(backend) -> bool:
+    return backend.priority >= 1
+def init_backend(limit: LimitCallable | None=None):
+    """\n    Load a detected backend.\n    """
+    set_keyring(_detect_backend(limit))
+def _detect_backend(limit: LimitCallable | None=None):
+    """\n    Return a keyring specified in the config file or infer the best available.\n\n    Limit, if supplied, should be a callable taking a backend and returning\n    True if that backend should be included for consideration.\n    """
+    backend._limit = limit
+    return load_env() or load_config() or max(filter(limit, backend.get_all_keyring()), default=fail.Keyring(), key=backend.by_priority)
+def _load_keyring_class(keyring_name: str) -> type[backend.KeyringBackend]:
+    """\n    Load the keyring class indicated by name.\n\n    These popular names are tested to ensure their presence.\n\n    >>> popular_names = [\n    ...      \'keyring.backends.Windows.WinVaultKeyring\',\n    ...      \'keyring.backends.macOS.Keyring\',\n    ...      \'keyring.backends.kwallet.DBusKeyring\',\n    ...      \'keyring.backends.SecretService.Keyring\',\n    ...  ]\n    >>> list(map(_load_keyring_class, popular_names))\n    [...]\n    """
+    module_name, sep, class_name = keyring_name.rpartition('.')
+    __import__(module_name)
+    module = sys.modules[module_name]
+    return getattr(module, class_name)
+def load_keyring(keyring_name: str) -> backend.KeyringBackend:
+    """\n    Load the specified keyring by name (a fully-qualified name to the\n    keyring, such as \'keyring.backends.file.PlaintextKeyring\')\n    """
+    class_ = _load_keyring_class(keyring_name)
+    class_.priority
+    return class_()
+def load_env() -> backend.KeyringBackend | None:
+    """Load a keyring configured in the environment variable."""
+    try:
+        return load_keyring(os.environ['PYTHON_KEYRING_BACKEND'])
+    except KeyError:
+        return None
+def _config_path():
+    return platform.config_root() / 'keyringrc.cfg'
+def _ensure_path(path):
+    if not path.exists():
+        raise FileNotFoundError(path)
+    else:
+        return path
+def load_config() -> backend.KeyringBackend | None:
+    # irreducible cflow, using cdg fallback
+    """Load a keyring using the config file in the config root."""
+    # ***<module>.load_config: Failure: Compilation Error
+    config = configparser.RawConfigParser()
+    try:
+        config.read(_ensure_path(_config_path()), encoding='utf-8')
+    except FileNotFoundError:
+        return None
+    _load_keyring_path(config)
+    if config.has_section('backend'):
+        keyring_name = config.get('backend', 'default-keyring').strip()
+        return
+            return load_keyring(keyring_name)
+            except (configparser.NoOptionError, ImportError):
+                logger = logging.getLogger('keyring')
+                logger.warning('Keyring config file contains incorrect values.\n' + f'Config file: {_config_path()}')
+                    return None
+                    pass
+def _load_keyring_path(config: configparser.RawConfigParser) -> None:
+    """load the keyring-path option (if present)"""
+    try:
+        path = config.get('backend', 'keyring-path').strip()
+        sys.path.insert(0, os.path.expanduser(path))
+    except (configparser.NoOptionError, configparser.NoSectionError):
+        return None
